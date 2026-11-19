@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Стопка слов</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Стопка">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F2F6FD" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12171F" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+:root{
+  --ground:#F2F6FD; --surface:#FFFFFF; --ink:#2B2F36; --muted:#7D8796; --line:#DDE3EC;
+  --accent-a:#3F90D6; --accent-b:#4AA8E8; --on-accent:#FFFFFF; --soft:#E6EDF6; --ghost:#D5DEEA; --ghost-ink:#8794A6;
+  --mark:#B9762F; --danger:#CF3F3F; --shadow:rgba(40,70,110,.14); --scrim:rgba(20,30,45,.38);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;
+  --ipa:"Charis SIL","Doulos SIL","Helvetica Neue",Arial,sans-serif;
+  --kb:0px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#12171F; --surface:#1C232D; --ink:#E9EEF5; --muted:#94A0B0; --line:#303A47;
+  --accent-a:#2F7FC6; --accent-b:#3B97DA; --on-accent:#FFFFFF; --soft:#28313D; --ghost:#232B36; --ghost-ink:#6E7B8C;
+  --mark:#E3A970; --danger:#F07A7A; --shadow:rgba(0,0,0,.4); --scrim:rgba(0,0,0,.55); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ground:#12171F; --surface:#1C232D; --ink:#E9EEF5; --muted:#94A0B0; --line:#303A47;
+  --accent-a:#2F7FC6; --accent-b:#3B97DA; --on-accent:#FFFFFF; --soft:#28313D; --ghost:#232B36; --ghost-ink:#6E7B8C;
+  --mark:#E3A970; --danger:#F07A7A; --shadow:rgba(0,0,0,.4); --scrim:rgba(0,0,0,.55); color-scheme:dark}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{height:100%}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);background:var(--ground)}
+body{margin:0;background:var(--ground);color:var(--ink);font:16px/1.4 var(--font);overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-user-select:none;user-select:none;-webkit-text-size-adjust:100%}
+button,input,textarea{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.view{height:100%;display:flex;flex-direction:column;min-height:0;max-width:520px;margin-inline:auto}
+svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:block}
+
+/* Shared */
+.bar{display:flex;align-items:center;gap:12px;min-height:60px;flex:none}
+.bar h2{flex:1;min-width:0;margin:0;font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.round{width:44px;height:44px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--soft)}
+.round svg{width:22px;height:22px}
+.dots svg{fill:currentColor;stroke:none}
+.primary{display:block;width:100%;min-height:60px;border-radius:30px;color:var(--on-accent);font-size:18px;
+  letter-spacing:.06em;text-transform:uppercase;background:linear-gradient(100deg,var(--accent-a),var(--accent-b));
+  box-shadow:0 5px 12px var(--shadow);transition:transform .12s,opacity .15s}
+.primary:active{transform:scale(.98)}
+.primary:disabled{opacity:.45;box-shadow:none}
+
+/* Home */
+.home-bar{padding-top:8px}
+.modes{flex:1;min-width:0;display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:3px;background:var(--soft);border-radius:14px}
+.modes button{min-height:40px;border-radius:11px;font-size:15px;color:var(--muted)}
+.modes button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 1px 3px var(--shadow)}
+#grid{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  list-style:none;margin:0;padding:18px 6px 32px;display:grid;grid-template-columns:1fr 1fr;gap:26px 18px;align-content:start}
+.tile{position:relative;aspect-ratio:3/4;max-width:100%}
+.sh{position:absolute;inset:0;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
+.sh.a{transform:rotate(-4deg)} .sh.b{transform:rotate(3.5deg)}
+.top{position:absolute;inset:0;border-radius:16px;background:var(--surface);border:1px solid var(--line);
+  box-shadow:0 6px 16px var(--shadow);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;padding:14px 12px 46px;text-align:center;transition:transform .12s}
+.top:active{transform:scale(.97)}
+.top .name{font-size:18px;font-weight:600;line-height:1.25;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.top .num{font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.add{position:absolute;left:8px;bottom:8px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
+  background:var(--soft);color:var(--accent-a);z-index:1}
+.add svg{width:22px;height:22px;stroke-width:2.4}
+.ghost .sh{background:var(--ghost);border-color:transparent}
+.ghost .top{background:var(--ghost);border-color:transparent;box-shadow:none;color:var(--ghost-ink);padding-bottom:14px}
+.ghost .top svg{width:44px;height:44px;stroke-width:1.8}
+.ghost .top span{font-size:14px}
+
+/* Study */
+.study-title{flex:1;min-width:0;text-align:center;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#counter{width:44px;flex:none;text-align:right;font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums}
+#stage{flex:1;min-height:0;position:relative;touch-action:none;margin-bottom:6px;outline-offset:6px;perspective:1100px}
+#stage .under{position:absolute;inset:8px 4px;background:var(--surface);border:1px solid var(--line);border-radius:22px}
+#stage .under.a{transform:rotate(-1.8deg)} #stage .under.b{transform:rotate(1.6deg)}
+#card{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+#card.settle{transition:transform .26s cubic-bezier(.2,.8,.3,1)}
+#card.gone{transition:transform .26s ease-in}
+#flip{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .42s cubic-bezier(.3,.7,.3,1)}
+#flip.instant{transition:none}
+#flip.flipped{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  padding:24px 22px;text-align:center;background:var(--surface);border:1px solid var(--line);border-radius:22px;
+  box-shadow:0 8px 22px var(--shadow);backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;overflow-wrap:anywhere}
+.back{transform:rotateY(180deg)}
+#flip.flipped .front{pointer-events:none}
+#flip:not(.flipped) .back *{pointer-events:none}
+.word{font-size:38px;line-height:1.15;text-wrap:balance}
+.word.m{font-size:30px} .word.s{font-size:24px} .word.xs{font-size:20px;line-height:1.35}
+.subword{font-size:20px;font-weight:600}
+.tr{font:17px/1.3 var(--ipa);color:var(--muted)}
+.ex{font-size:18px;line-height:1.5;color:var(--muted);text-wrap:pretty;margin-top:8px}
+.ex b{font-weight:600;color:var(--mark)}
+.line{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+#speak{width:44px;height:44px;display:grid;place-items:center;color:var(--accent-b);flex:none}
+#speak svg{width:26px;height:26px}
+#swipeHint{flex:none;text-align:center;font-size:14px;color:var(--muted);padding-block:6px 16px;text-wrap:balance}
+
+/* List */
+#search{flex:none;width:100%;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font-size:16px;margin-bottom:8px;-webkit-user-select:text;user-select:text}
+#rows{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin:0;padding:0 0 16px;list-style:none}
+.row{display:flex;align-items:center;gap:6px;padding-block:13px;border-bottom:1px solid var(--line)}
+.row .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.row .en{font-size:19px;font-weight:700}
+.row .ru{font-size:17px;font-weight:300}
+.row .eg{font-size:15px;opacity:.45}
+.more{width:44px;height:44px;flex:none;display:grid;place-items:center;color:var(--muted)}
+.more svg{width:22px;height:22px;fill:currentColor;stroke:none}
+.empty{padding:48px 12px;text-align:center;color:var(--muted);text-wrap:balance}
+
+/* Form */
+#form{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding-bottom:24px}
+.field{display:block;flex:none;background:var(--surface);border-radius:10px 10px 0 0;border-bottom:1px solid var(--muted);padding:9px 14px 7px}
+.field span{display:block;font-size:13px;color:var(--muted)}
+.field input,.field textarea{display:block;width:100%;border:0;outline:0;background:none;padding:2px 0;font-size:18px;resize:none;-webkit-user-select:text;user-select:text}
+.field:focus-within{border-bottom-color:var(--accent-b);box-shadow:0 1px 0 var(--accent-b)}
+#tr{font-family:var(--ipa)}
+#form .primary{flex:none;margin-top:4px}
+
+/* Sheet and toast */
+#scrim{position:fixed;inset:0;background:var(--scrim);z-index:20}
+#sheet{position:fixed;left:0;right:0;bottom:var(--kb);z-index:21;max-width:520px;margin-inline:auto;background:var(--surface);border-radius:20px 20px 0 0;
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+#sheetTitle{margin:0 0 10px;text-align:center;font-weight:600;font-size:17px;overflow-wrap:anywhere;text-wrap:balance}
+#sheetText{margin:0 0 10px;text-align:center;color:var(--muted);font-size:15px;text-wrap:balance}
+#sheetInput{display:block;width:100%;min-height:48px;padding:0 14px;margin-bottom:12px;border:1px solid var(--line);border-radius:12px;background:var(--ground);font-size:17px;-webkit-user-select:text;user-select:text}
+#sheetBtns button{display:block;width:100%;min-height:52px;font-size:18px;border-top:1px solid var(--line)}
+#sheetBtns button.danger{color:var(--danger)}
+#sheetBtns button.main{color:var(--accent-a);font-weight:600}
+#sheetBtns button.quiet{color:var(--muted)}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:30;max-width:488px;margin-inline:auto;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:14px;background:var(--ink);color:var(--ground);font-size:15px}
+#toast button{flex:none;min-height:32px;font-weight:600;color:inherit;text-decoration:underline}
+
+@media (prefers-reduced-motion:reduce){#flip,#card.settle,#card.gone,.primary,.top{transition:none}}
+</style>
+</head>
+<body>
+<h1 class="sr">Стопка слов</h1>
+
+<section class="view" id="home">
+  <div class="bar home-bar">
+    <div class="modes" role="group" aria-label="Какой стороной показывать карточки">
+      <button type="button" data-mode="ru">Русский</button>
+      <button type="button" data-mode="en">English</button>
+      <button type="button" data-mode="mix">Вразброс</button>
+    </div>
+    <button type="button" class="round dots" id="homeMenu" aria-label="Резервная копия"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+  </div>
+  <ul id="grid"></ul>
+  <input id="importFile" type="file" accept=".json,application/json" class="sr" tabindex="-1" aria-hidden="true">
+</section>
+
+<section class="view" id="study" hidden>
+  <div class="bar">
+    <button type="button" class="round" id="studyBack" aria-label="К стопкам"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div class="study-title" id="studyTitle"></div>
+    <span id="counter"></span>
+  </div>
+  <div id="stage" tabindex="0" role="button" aria-label="Карточка. Пробел переворачивает, стрелка вверх открывает следующую, стрелка вниз возвращает предыдущую.">
+    <div class="under a"></div><div class="under b"></div>
+    <div id="card"><div id="flip">
+      <div class="face front" id="front"></div>
+      <div class="face back" id="back"></div>
+    </div></div>
+  </div>
+  <div id="swipeHint">Нажми, чтобы перевернуть. Смахни вверх, чтобы открыть следующую, или вниз, чтобы вернуть прошлую.</div>
+</section>
+
+<section class="view" id="list" hidden>
+  <div class="bar">
+    <button type="button" class="round" id="listBack" aria-label="К стопкам"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <h2 id="listTitle"></h2>
+    <button type="button" class="round dots" id="stackMenu" aria-label="Настройки стопки"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+    <button type="button" class="round" id="listAdd" aria-label="Новая карточка"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+  </div>
+  <input id="search" type="search" placeholder="Поиск" aria-label="Поиск по стопке" autocomplete="off" autocapitalize="none">
+  <ul id="rows"></ul>
+</section>
+
+<section class="view" id="edit" hidden>
+  <div class="bar">
+    <button type="button" class="round" id="formBack" aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <h2 id="formTitle">Новая карточка</h2>
+  </div>
+  <form id="form" novalidate autocomplete="off">
+    <label class="field"><span>English</span><input id="en" lang="en" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+    <label class="field"><span>Russian</span><input id="ru" lang="ru"></label>
+    <label class="field"><span>Example of usage</span><textarea id="ex" lang="en" rows="2"></textarea></label>
+    <label class="field"><span>Transcription</span><input id="tr" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+    <button type="submit" class="primary" id="save" disabled>Сохранить</button>
+  </form>
+</section>
+
+<div id="scrim" hidden></div>
+<div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <p id="sheetTitle"></p>
+  <p id="sheetText" hidden></p>
+  <input id="sheetInput" maxlength="60" autocomplete="off" hidden>
+  <div id="sheetBtns"></div>
+</div>
+<div id="toast" role="status" hidden><span id="toastText"></span><button type="button" id="toastAct" hidden></button></div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const KEY = 'stopka.data.v2', OLD_KEY = 'stopka.cards.v1', MODE_KEY = 'stopka.mode';
+const store = {
+  get(k){ try { return localStorage.getItem(k) } catch { return null } },
+  set(k,v){ try { localStorage.setItem(k,v); return true } catch { return false } }
+};
+const SEED_CARDS = [
+ {id:"seed-furious",en:"furious",ru:"в ярости",ex:"I get furious when people are rude (грубят) to others.",tr:"/ˈfjʊriəs/",createdAt:1},
+ {id:"seed-positive",en:"positive",ru:"очень уверенный",ex:"I'm positive that I can learn new skills quickly.",tr:"/ˈpɑːzətɪv/",createdAt:2},
+ {id:"seed-delighted",en:"delighted",ru:"очень довольный",ex:"I would be delighted to join your team.",tr:"/dɪˈlaɪtɪd/",createdAt:3},
+ {id:"seed-amazed",en:"amazed",ru:"изумлённый, поражённый",ex:"I was amazed by how friendly my colleagues were.",tr:"/əˈmeɪzd/",createdAt:4},
+ {id:"seed-sewage",en:"sewage",ru:"сточные воды (pl)",ex:"The city needs a better sewage system",tr:"/ˈsuːɪdʒ/",createdAt:5},
+ {id:"seed-odor",en:"an odor",ru:"странный запах (обычно неприятный)",ex:"There was a strange odor in the kitchen.",tr:"/ˈoʊdər/",createdAt:6},
+ {id:"seed-distinctive",en:"distinctive",ru:"характерный, отличительный",ex:"I think my communication style is one of my distinctive qualities.",tr:"/dɪˈstɪŋktɪv/",createdAt:7},
+ {id:"seed-numbness",en:"numbness",ru:"онемение",ex:"I sometimes feel numbness in my hands after working on a computer",tr:"/ˈnʌmnəs/",createdAt:8}
+];
+const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+/* ---------- data ---------- */
+function load(){
+  try { const d = JSON.parse(store.get(KEY)); if (d && Array.isArray(d.stacks)) return d.stacks } catch {}
+  let old = null;
+  try { old = JSON.parse(store.get(OLD_KEY)) } catch {}
+  return [{ id:'s-main', name:'Слова', createdAt:1, cards: Array.isArray(old) ? old : SEED_CARDS }];
+}
+let stacks = load();
+let mode = store.get(MODE_KEY) || 'ru';
+let curId = null;
+function persist(){ if (!store.set(KEY, JSON.stringify({ version:2, stacks }))) toast('Не удалось сохранить. Освободи место на телефоне.') }
+persist();
+const cur = () => stacks.find(s => s.id === curId);
+const findCard = id => cur().cards.find(c => c.id === id);
+
+function plural(n){
+  const a = n % 100, b = n % 10;
+  if (a > 10 && a < 20) return 'слов';
+  if (b === 1) return 'слово';
+  if (b > 1 && b < 5) return 'слова';
+  return 'слов';
+}
+function el(tag, cls, text){ const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n }
+const ICON_PLUS = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
+
+/* ---------- navigation ---------- */
+const views = ['home','study','list','edit'];
+function show(v){
+  views.forEach(n => $(n).hidden = n !== v);
+  if (v === 'home') renderHome();
+  if (v === 'list') renderList();
+}
+
+/* ---------- home ---------- */
+function renderHome(){
+  document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
+  const frag = document.createDocumentFragment();
+  stacks.forEach(s => {
+    const li = el('li','tile');
+    li.append(el('div','sh a'), el('div','sh b'));
+    const top = el('button','top'); top.type = 'button'; top.dataset.open = s.id;
+    top.setAttribute('aria-label', s.name + ', ' + s.cards.length + ' ' + plural(s.cards.length) + '. Учить');
+    top.append(el('span','name', s.name), el('span','num', s.cards.length + ' ' + plural(s.cards.length)));
+    const add = el('button','add'); add.type = 'button'; add.dataset.words = s.id;
+    add.setAttribute('aria-label', 'Слова стопки «' + s.name + '»'); add.innerHTML = ICON_PLUS;
+    li.append(top, add); frag.append(li);
+  });
+  const g = el('li','tile ghost');
+  g.append(el('div','sh a'), el('div','sh b'));
+  const gt = el('button','top'); gt.type = 'button'; gt.id = 'newStack';
+  gt.innerHTML = ICON_PLUS; gt.append(el('span','', 'Новая стопка'));
+  g.append(gt); frag.append(g);
+  $('grid').replaceChildren(frag);
+}
+document.querySelector('.modes').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  mode = b.dataset.mode; store.set(MODE_KEY, mode); renderHome();
+});
+$('grid').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'newStack') return askName('Новая стопка', '', name => {
+    stacks.push({ id:newId('s'), name, createdAt:Date.now(), cards:[] }); persist(); renderHome();
+    requestAnimationFrame(() => $('grid').scrollTo({ top:$('grid').scrollHeight, behavior:'smooth' }));
+  });
+  curId = b.dataset.open || b.dataset.words;
+  if (b.dataset.words || !cur().cards.length) { $('search').value = ''; show('list') }
+  else startStudy();
+});
+
+/* ---------- study ---------- */
+let queue = [], seen = 0, flipped = false, busy = false;
+function shuffle(a){
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i],a[j]] = [a[j],a[i]] }
+  return a;
+}
+function startStudy(){
+  queue = shuffle(cur().cards.map(c => c.id)); seen = 0;
+  $('studyTitle').textContent = cur().name;
+  show('study'); drawCard(); $('stage').focus({ preventScroll:true });
+}
+function sizeClass(t){ return t.length > 60 ? 'xs' : t.length > 26 ? 's' : t.length > 14 ? 'm' : '' }
+function example(text, word){
+  const p = el('div','ex');
+  const stem = word.replace(/^(an?|the|to)\s+/i,'').trim();
+  const i = stem ? text.toLowerCase().indexOf(stem.toLowerCase()) : -1;
+  if (i < 0) { p.textContent = text; return p }
+  p.append(text.slice(0,i), el('b','',text.slice(i,i+stem.length)), text.slice(i+stem.length));
+  return p;
+}
+function speakBtn(word){
+  if (!('speechSynthesis' in window)) return null;
+  const b = el('button'); b.id = 'speak'; b.type = 'button'; b.setAttribute('aria-label','Произнести');
+  b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4zM15.5 9a4 4 0 010 6M18 6.5a8 8 0 010 11"/></svg>';
+  b.addEventListener('click', () => {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(word); u.lang = 'en-US'; u.rate = .9; speechSynthesis.speak(u);
+  });
+  return b;
+}
+function drawCard(){
+  const c = findCard(queue[0]); if (!c) return show('home');
+  const side = mode === 'mix' ? (Math.random() < .5 ? 'ru' : 'en') : mode;
+  const f = $('front'), b = $('back');
+  f.replaceChildren(); b.replaceChildren();
+  const faceWord = side === 'ru' ? c.ru : c.en;
+  f.append(el('div','word ' + sizeClass(faceWord), faceWord));
+  const enLine = el('div','line');
+  if (side === 'ru') enLine.append(el('div','word ' + sizeClass(c.en), c.en));
+  else { b.append(el('div','word ' + sizeClass(c.ru), c.ru)); enLine.append(el('div','subword', c.en)) }
+  const s = speakBtn(c.en); if (s) enLine.append(s);
+  b.append(enLine);
+  if (c.tr) b.append(el('div','tr', c.tr));
+  if (c.ex) b.append(example(c.ex, c.en));
+  const flip = $('flip'); flip.classList.add('instant'); flip.classList.remove('flipped'); flipped = false;
+  void flip.offsetWidth; flip.classList.remove('instant');
+  const n = queue.length;
+  $('counter').textContent = (seen % n + 1) + ' / ' + n;
+}
+function toggleFlip(){ flipped = !flipped; $('flip').classList.toggle('flipped', flipped) }
+const reduced = () => matchMedia('(prefers-reduced-motion:reduce)').matches;
+function settleFrom(transform){
+  const card = $('card');
+  card.classList.remove('gone','settle'); card.style.transform = transform;
+  void card.offsetWidth;
+  card.classList.add('settle'); card.style.transform = '';
+}
+function advance(){
+  if (busy) return; busy = true;
+  const card = $('card');
+  const done = () => { queue.push(queue.shift()); seen++; drawCard(); settleFrom('translateY(14px) scale(.97)'); busy = false };
+  if (reduced()) return done();
+  card.classList.remove('settle'); card.classList.add('gone');
+  card.style.transform = 'translateY(-115%) rotate(-5deg)';
+  setTimeout(done, 270);
+}
+function goBack(){
+  if (busy) return;
+  if (!seen) { settleFrom($('card').style.transform || 'translateY(0)'); return toast('Это первая карточка') }
+  queue.unshift(queue.pop()); seen--; drawCard();
+  settleFrom(reduced() ? '' : 'translateY(-115%) rotate(-5deg)');
+}
+(() => {
+  const stage = $('stage'), card = $('card');
+  let drag = null;
+  stage.addEventListener('pointerdown', e => {
+    if (busy || e.target.closest('button')) return;
+    drag = { id:e.pointerId, x:e.clientX, y:e.clientY, t:performance.now(), dx:0, dy:0 };
+    stage.setPointerCapture(e.pointerId);
+    card.classList.remove('settle');
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag.dx = e.clientX - drag.x; drag.dy = e.clientY - drag.y;
+    const y = drag.dy < 0 || seen ? drag.dy : drag.dy * .25;
+    card.style.transform = `translate(${drag.dx * .25}px,${y}px) rotate(${drag.dx * .02}deg)`;
+  });
+  const end = e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const { dx, dy, t } = drag; drag = null;
+    const speed = dy / Math.max(1, performance.now() - t);
+    const up = e.type === 'pointerup';
+    if (up && Math.abs(dx) < 10 && Math.abs(dy) < 10) { card.style.transform = ''; toggleFlip(); return }
+    if (up && (dy < -80 || (dy < -30 && speed < -.5))) return advance();
+    if (up && (dy > 80 || (dy > 30 && speed > .5))) return goBack();
+    card.classList.add('settle'); card.style.transform = '';
+  };
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
+  stage.addEventListener('touchmove', e => e.preventDefault(), { passive:false });
+  stage.addEventListener('keydown', e => {
+    if (e.target !== stage) return;
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleFlip() }
+    if (e.key === 'ArrowUp') { e.preventDefault(); advance() }
+    if (e.key === 'ArrowDown') { e.preventDefault(); goBack() }
+  });
+})();
+
+/* ---------- list ---------- */
+function renderList(){
+  const s = cur();
+  const q = $('search').value.trim().toLowerCase();
+  const sorted = [...s.cards].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  const shown = q ? sorted.filter(c => (c.en + ' ' + c.ru + ' ' + (c.ex||'')).toLowerCase().includes(q)) : sorted;
+  $('listTitle').textContent = s.name + ' · ' + s.cards.length;
+  const ul = $('rows'), frag = document.createDocumentFragment();
+  shown.forEach(c => {
+    const li = el('li','row'), t = el('div','txt');
+    t.append(el('span','en',c.en), el('span','ru',c.ru));
+    if (c.ex) t.append(el('span','eg',c.ex));
+    const m = el('button','more'); m.type = 'button'; m.dataset.id = c.id;
+    m.setAttribute('aria-label','Действия: ' + c.en);
+    m.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+    li.append(t, m); frag.append(li);
+  });
+  ul.replaceChildren(frag);
+  if (!shown.length) ul.append(el('li','empty', q ? 'Ничего не нашлось' : 'В этой стопке пока нет карточек. Нажми плюс справа вверху, чтобы добавить первую.'));
+}
+$('search').addEventListener('input', renderList);
+$('rows').addEventListener('click', e => {
+  const b = e.target.closest('.more'); if (!b) return;
+  const c = findCard(b.dataset.id);
+  openSheet({ title:c.en, actions:[
+    { label:'Редактировать', fn:() => openForm(c.id) },
+    { label:'Удалить', cls:'danger', fn:() => removeCard(c.id) }
+  ]});
+});
+function removeCard(id){
+  const s = cur(), c = s.cards.find(x => x.id === id);
+  s.cards = s.cards.filter(x => x.id !== id);
+  persist(); renderList();
+  toast('Слово удалено', 'Вернуть', () => { s.cards.push(c); persist(); if (!$('list').hidden) renderList() });
+}
+$('stackMenu').addEventListener('click', () => {
+  const s = cur();
+  openSheet({ title:s.name, actions:[
+    { label:'Переименовать', fn:() => askName('Название стопки', s.name, name => { s.name = name; persist(); renderList() }) },
+    { label:'Удалить стопку', cls:'danger', fn:() => openSheet({
+        title:'Удалить стопку «' + s.name + '»?',
+        text: s.cards.length ? 'Вместе с ней удалятся ' + s.cards.length + ' ' + plural(s.cards.length) + '. Вернуть их не получится.' : 'Стопка пустая.',
+        actions:[{ label:'Удалить', cls:'danger', fn:() => {
+          stacks = stacks.filter(x => x.id !== s.id); persist(); show('home'); toast('Стопка удалена') } }]
+      }) }
+  ]});
+});
+
+/* ---------- form ---------- */
+let editId = null;
+const fields = ['en','ru','ex','tr'];
+function checkForm(){ $('save').disabled = !($('en').value.trim() && $('ru').value.trim()) }
+function openForm(id){
+  editId = id;
+  const c = id ? findCard(id) : null;
+  fields.forEach(f => $(f).value = c ? (c[f] || '') : '');
+  $('formTitle').textContent = id ? 'Редактирование' : 'Новая карточка';
+  show('edit'); checkForm();
+}
+fields.forEach(f => $(f).addEventListener('input', checkForm));
+$('form').addEventListener('submit', e => {
+  e.preventDefault();
+  if ($('save').disabled) return;
+  const s = cur(), v = {}; fields.forEach(f => v[f] = $(f).value.trim());
+  const i = editId ? s.cards.findIndex(c => c.id === editId) : -1;
+  if (i >= 0) s.cards[i] = { ...s.cards[i], ...v, updatedAt:Date.now() };
+  else s.cards.push({ ...v, id:newId('c'), createdAt:Date.now() });
+  persist();
+  if (editId) { toast('Изменения сохранены'); show('list') }
+  else { fields.forEach(f => $(f).value = ''); checkForm(); toast('Карточка сохранена'); $('en').focus() }
+});
+
+/* ---------- sheet ---------- */
+let sheetOpener = null;
+function openSheet({ title, text, input, actions }){
+  if ($('sheet').hidden) sheetOpener = document.activeElement;
+  $('sheetTitle').textContent = title;
+  $('sheetText').hidden = !text; $('sheetText').textContent = text || '';
+  const inp = $('sheetInput'); inp.hidden = !input;
+  const box = $('sheetBtns'); box.replaceChildren();
+  [...actions, { label:'Отмена', cls:'quiet' }].forEach(a => {
+    const b = el('button', a.cls || '', a.label); b.type = 'button';
+    b.addEventListener('click', () => { if (a.keep && a.keep()) return; closeSheet(); if (a.fn) a.fn() });
+    box.append(b);
+  });
+  $('scrim').hidden = $('sheet').hidden = false;
+  if (input) { inp.value = input.value; inp.placeholder = input.placeholder || ''; inp.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); box.firstChild.click() } }; inp.focus() }
+  else box.firstChild.focus();
+}
+function closeSheet(){
+  $('scrim').hidden = $('sheet').hidden = true; $('sheetInput').blur();
+  if (sheetOpener && sheetOpener.isConnected) sheetOpener.focus({ preventScroll:true });
+}
+function askName(title, value, done){
+  openSheet({ title, input:{ value, placeholder:'Например, Фразовые глаголы' }, actions:[
+    { label:'Сохранить', cls:'main', keep:() => !$('sheetInput').value.trim(), fn:() => done($('sheetInput').value.trim()) }
+  ]});
+}
+$('scrim').addEventListener('click', closeSheet);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('sheet').hidden) closeSheet() });
+if (window.visualViewport) {
+  const kb = () => document.documentElement.style.setProperty('--kb',
+    Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop) + 'px');
+  visualViewport.addEventListener('resize', kb); visualViewport.addEventListener('scroll', kb);
+}
+
+/* ---------- backup ---------- */
+$('homeMenu').addEventListener('click', () => openSheet({
+  title:'Резервная копия',
+  text:'Все стопки сохраняются одним файлом. Храни его в iCloud Drive или отправь себе.',
+  actions:[{ label:'Сохранить копию', cls:'main', fn:exportData }, { label:'Загрузить копию', fn:() => $('importFile').click() }]
+}));
+async function exportData(){
+  const name = 'stopka-' + new Date().toISOString().slice(0,10) + '.json';
+  const file = new File([JSON.stringify({ app:'stopka', version:2, stacks }, null, 1)], name, { type:'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file] }); return }
+  } catch (e) { if (e && e.name === 'AbortError') return }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+const okCard = c => c && typeof c.en === 'string' && typeof c.ru === 'string';
+function mergeCards(stack, list){
+  const byId = new Map(stack.cards.map(c => [c.id, c])); let added = 0;
+  list.filter(okCard).forEach(c => { const id = c.id || newId('c'); if (!byId.has(id)) added++; byId.set(id, { ...c, id }) });
+  stack.cards = [...byId.values()]; return added;
+}
+$('importFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    let added = 0;
+    if (data && Array.isArray(data.stacks)) {
+      data.stacks.forEach(src => {
+        if (!src || !Array.isArray(src.cards)) return;
+        let s = stacks.find(x => x.id === src.id);
+        if (!s) { s = { id:src.id || newId('s'), name:String(src.name || 'Стопка'), createdAt:src.createdAt || Date.now(), cards:[] }; stacks.push(s) }
+        added += mergeCards(s, src.cards);
+      });
+    } else {
+      const list = Array.isArray(data) ? data : data.cards;
+      if (!Array.isArray(list) || !list.some(okCard)) throw 0;
+      if (!stacks.length) stacks.push({ id:'s-main', name:'Слова', createdAt:Date.now(), cards:[] });
+      added = mergeCards(stacks[0], list);
+    }
+    persist(); renderHome();
+    toast('Копия загружена. Новых слов: ' + added);
+  } catch { toast('Этот файл не подходит. Выбери файл копии stopka.json.') }
+});
+
+/* ---------- toast ---------- */
+let toastTimer;
+function toast(text, action, fn){
+  $('toastText').textContent = text;
+  const a = $('toastAct');
+  a.hidden = !action;
+  if (action) { a.textContent = action; a.onclick = () => { $('toast').hidden = true; fn() } }
+  $('toast').hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $('toast').hidden = true, action ? 6000 : 2400);
+}
+
+/* ---------- wiring ---------- */
+$('listAdd').addEventListener('click', () => openForm(null));
+$('studyBack').addEventListener('click', () => show('home'));
+$('listBack').addEventListener('click', () => show('home'));
+$('formBack').addEventListener('click', () => show('list'));
+
+renderHome();
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
