@@ -129,6 +129,17 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
 .field:focus-within{border-bottom-color:var(--accent-b);box-shadow:0 1px 0 var(--accent-b)}
 #tr{font-family:var(--ipa)}
 #form .primary{flex:none;margin-top:4px}
+.photo{flex:none;background:var(--surface);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.photo>span{font-size:13px;color:var(--muted)}
+#photoPreview{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:10px;background:var(--soft)}
+.photo-btns{display:flex;gap:8px;flex-wrap:wrap}
+.photo-btns button{flex:1;min-height:44px;border-radius:12px;background:var(--soft);font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px}
+.photo-btns svg{width:20px;height:20px}
+#photoRemove{color:var(--danger)}
+
+/* Card photo: shown on the side that carries the English word */
+.pic{display:block;width:100%;max-width:300px;aspect-ratio:16/10;max-height:38%;object-fit:cover;border-radius:14px;flex:none;background:var(--soft)}
+.row .thumb{width:52px;height:40px;flex:none;border-radius:8px;object-fit:cover;background:var(--soft)}
 
 /* Sheet and toast */
 #scrim{position:fixed;inset:0;background:var(--scrim);z-index:20}
@@ -201,6 +212,15 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
     <label class="field"><span>Russian</span><input id="ru" lang="ru"></label>
     <label class="field"><span>Example of usage</span><textarea id="ex" lang="en" rows="2"></textarea></label>
     <label class="field"><span>Transcription</span><input id="tr" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+    <div class="photo">
+      <span>Фото</span>
+      <img id="photoPreview" alt="Фото карточки" hidden>
+      <div class="photo-btns">
+        <button type="button" id="photoPick"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg><span id="photoPickText">Добавить фото</span></button>
+        <button type="button" id="photoRemove" hidden>Убрать</button>
+      </div>
+      <input id="photoFile" type="file" accept="image/*" class="sr" tabindex="-1" aria-hidden="true">
+    </div>
     <button type="submit" class="primary" id="save" disabled>Сохранить</button>
   </form>
 </section>
@@ -256,6 +276,53 @@ function plural(n){
   if (b > 1 && b < 5) return 'слова';
   return 'слов';
 }
+/* ---------- photos: kept in IndexedDB, re-encoded so no camera metadata survives ---------- */
+const pics = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('stopka', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('pics');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => {
+    const t = db.transaction('pics', mode), st = t.objectStore('pics'); const out = fn(st);
+    t.oncomplete = () => res(out && 'result' in out ? out.result : undefined); t.onerror = () => rej(t.error);
+  }) };
+  const urls = new Map();
+  return {
+    put: (id, blob) => tx('readwrite', st => st.put(blob, id)),
+    get: id => tx('readonly', st => st.get(id)),
+    del: id => { const u = urls.get(id); if (u) { URL.revokeObjectURL(u); urls.delete(id) } return tx('readwrite', st => st.delete(id)) },
+    keys: () => tx('readonly', st => st.getAllKeys()),
+    cached: id => urls.get(id),
+    async url(id){
+      if (urls.has(id)) return urls.get(id);
+      const b = await this.get(id).catch(() => null); if (!b) return null;
+      const u = URL.createObjectURL(b); urls.set(id, u); return u;
+    }
+  };
+})();
+async function shrink(file){
+  const src = await new Promise((res, rej) => {
+    const img = new Image(), u = URL.createObjectURL(file);
+    img.onload = () => { URL.revokeObjectURL(u); res(img) }; img.onerror = () => { URL.revokeObjectURL(u); rej() };
+    img.src = u;
+  });
+  const k = Math.min(1, 900 / Math.max(src.naturalWidth, src.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(src.naturalWidth * k); c.height = Math.round(src.naturalHeight * k);
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(), 'image/jpeg', .82));
+}
+const blobToData = b => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(b) });
+const dataToBlob = d => fetch(d).then(r => r.blob());
+function picEl(id, cls){
+  const img = el('img', cls); img.alt = ''; img.decoding = 'async';
+  const u = pics.cached(id);
+  if (u) img.src = u; else pics.url(id).then(x => { if (x) img.src = x; else img.remove() });
+  return img;
+}
+
 function el(tag, cls, text){ const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n }
 const ICON_PLUS = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
 
@@ -311,6 +378,7 @@ function shuffle(a){
 }
 function startStudy(){
   queue = shuffle(cur().cards.map(c => c.id)); seen = 0;
+  cur().cards.forEach(c => { if (c.img) pics.url(c.img) });
   $('studyTitle').textContent = cur().name;
   show('study'); drawCard(); $('stage').focus({ preventScroll:true });
 }
@@ -339,6 +407,8 @@ function drawCard(){
   const f = $('front'), b = $('back');
   f.replaceChildren(); b.replaceChildren();
   const faceWord = side === 'ru' ? c.ru : c.en;
+  if (c.img && side === 'en') f.append(picEl(c.img, 'pic'));
+  if (c.img && side === 'ru') b.append(picEl(c.img, 'pic'));
   f.append(el('div','word ' + sizeClass(faceWord), faceWord));
   const enLine = el('div','line');
   if (side === 'ru') enLine.append(el('div','word ' + sizeClass(c.en), c.en));
@@ -423,10 +493,11 @@ function renderList(){
     const li = el('li','row'), t = el('div','txt');
     t.append(el('span','en',c.en), el('span','ru',c.ru));
     if (c.ex) t.append(el('span','eg',c.ex));
+    if (c.img) li.append(picEl(c.img, 'thumb'));
     const m = el('button','more'); m.type = 'button'; m.dataset.id = c.id;
     m.setAttribute('aria-label','Действия: ' + c.en);
     m.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
-    li.append(t, m); frag.append(li);
+    li.prepend(t); li.append(m); frag.append(li);
   });
   ul.replaceChildren(frag);
   if (!shown.length) ul.append(el('li','empty', q ? 'Ничего не нашлось' : 'В этой стопке пока нет карточек. Нажми плюс справа вверху, чтобы добавить первую.'));
@@ -461,26 +532,61 @@ $('stackMenu').addEventListener('click', () => {
 
 /* ---------- form ---------- */
 let editId = null;
+let photo = { id:null, blob:null };   // id: picture already saved; blob: newly picked one
+let photoUrl = null;
 const fields = ['en','ru','ex','tr'];
-function checkForm(){ $('save').disabled = !($('en').value.trim() && $('ru').value.trim()) }
+function checkForm(){ $('save').disabled = !($('en').value.trim() && $('ru').value.trim()) || photoBusy }
+let photoBusy = false;
+function showPhoto(url){
+  if (photoUrl) { URL.revokeObjectURL(photoUrl); photoUrl = null }
+  const p = $('photoPreview');
+  p.hidden = !url; if (url) p.src = url; else p.removeAttribute('src');
+  $('photoRemove').hidden = !url;
+  $('photoPickText').textContent = url ? 'Заменить' : 'Добавить фото';
+}
+function setPhoto(id, blob){
+  photo = { id, blob };
+  if (blob) { const u = URL.createObjectURL(blob); showPhoto(u); photoUrl = u }
+  else if (id) { showPhoto(null); pics.url(id).then(u => { if (photo.id === id && u) { showPhoto(u) } }) }
+  else showPhoto(null);
+}
+$('photoPick').addEventListener('click', () => $('photoFile').click());
+$('photoRemove').addEventListener('click', () => setPhoto(null, null));
+$('photoFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  photoBusy = true; checkForm(); $('photoPickText').textContent = 'Загружаю…';
+  try { setPhoto(null, await shrink(f)) }
+  catch { toast('Не получилось открыть это фото. Выбери другое.'); setPhoto(photo.id, photo.blob) }
+  finally { photoBusy = false; checkForm() }
+});
 function openForm(id){
   editId = id;
   const c = id ? findCard(id) : null;
   fields.forEach(f => $(f).value = c ? (c[f] || '') : '');
+  setPhoto(c && c.img || null, null);
   $('formTitle').textContent = id ? 'Редактирование' : 'Новая карточка';
   show('edit'); checkForm();
 }
 fields.forEach(f => $(f).addEventListener('input', checkForm));
-$('form').addEventListener('submit', e => {
+$('form').addEventListener('submit', async e => {
   e.preventDefault();
   if ($('save').disabled) return;
   const s = cur(), v = {}; fields.forEach(f => v[f] = $(f).value.trim());
+  v.img = photo.id || null;
+  if (photo.blob) {
+    const pid = newId('p');
+    try { await pics.put(pid, photo.blob); v.img = pid }
+    catch { toast('Фото не сохранилось: на телефоне мало места. Карточка сохранена без него.'); v.img = null }
+  }
+  if (!v.img) delete v.img;
   const i = editId ? s.cards.findIndex(c => c.id === editId) : -1;
+  if (i >= 0 && !v.img) delete s.cards[i].img;
   if (i >= 0) s.cards[i] = { ...s.cards[i], ...v, updatedAt:Date.now() };
   else s.cards.push({ ...v, id:newId('c'), createdAt:Date.now() });
   persist();
   if (editId) { toast('Изменения сохранены'); show('list') }
-  else { fields.forEach(f => $(f).value = ''); checkForm(); toast('Карточка сохранена'); $('en').focus() }
+  else { fields.forEach(f => $(f).value = ''); setPhoto(null, null); checkForm(); toast('Карточка сохранена'); $('en').focus() }
 });
 
 /* ---------- sheet ---------- */
@@ -525,7 +631,17 @@ $('homeMenu').addEventListener('click', () => openSheet({
 }));
 async function exportData(){
   const name = 'stopka-' + new Date().toISOString().slice(0,10) + '.json';
-  const file = new File([JSON.stringify({ app:'stopka', version:2, stacks }, null, 1)], name, { type:'application/json' });
+  const out = [];
+  for (const s of stacks) {
+    const cards = [];
+    for (const c of s.cards) {
+      const { img, ...rest } = c;
+      const b = img ? await pics.get(img).catch(() => null) : null;
+      cards.push(b ? { ...rest, imgData: await blobToData(b) } : rest);
+    }
+    out.push({ ...s, cards });
+  }
+  const file = new File([JSON.stringify({ app:'stopka', version:3, stacks:out })], name, { type:'application/json' });
   try {
     if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file] }); return }
   } catch (e) { if (e && e.name === 'AbortError') return }
@@ -534,9 +650,16 @@ async function exportData(){
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 const okCard = c => c && typeof c.en === 'string' && typeof c.ru === 'string';
-function mergeCards(stack, list){
+async function mergeCards(stack, list){
   const byId = new Map(stack.cards.map(c => [c.id, c])); let added = 0;
-  list.filter(okCard).forEach(c => { const id = c.id || newId('c'); if (!byId.has(id)) added++; byId.set(id, { ...c, id }) });
+  for (const c of list.filter(okCard)) {
+    const id = c.id || newId('c'); if (!byId.has(id)) added++;
+    const { imgData, img, ...card } = c;
+    if (typeof imgData === 'string' && imgData.startsWith('data:image/')) {
+      try { const pid = newId('p'); await pics.put(pid, await dataToBlob(imgData)); card.img = pid } catch {}
+    } else if (byId.has(id) && byId.get(id).img) card.img = byId.get(id).img;
+    byId.set(id, { ...card, id });
+  }
   stack.cards = [...byId.values()]; return added;
 }
 $('importFile').addEventListener('change', async e => {
@@ -545,18 +668,20 @@ $('importFile').addEventListener('change', async e => {
   try {
     const data = JSON.parse(await f.text());
     let added = 0;
+    const pending = [];
     if (data && Array.isArray(data.stacks)) {
       data.stacks.forEach(src => {
         if (!src || !Array.isArray(src.cards)) return;
         let s = stacks.find(x => x.id === src.id);
         if (!s) { s = { id:src.id || newId('s'), name:String(src.name || 'Стопка'), createdAt:src.createdAt || Date.now(), cards:[] }; stacks.push(s) }
-        added += mergeCards(s, src.cards);
+        pending.push([s, src.cards]);
       });
+      for (const [s, list] of pending) added += await mergeCards(s, list);
     } else {
       const list = Array.isArray(data) ? data : data.cards;
       if (!Array.isArray(list) || !list.some(okCard)) throw 0;
       if (!stacks.length) stacks.push({ id:'s-main', name:'Слова', createdAt:Date.now(), cards:[] });
-      added = mergeCards(stacks[0], list);
+      added = await mergeCards(stacks[0], list);
     }
     persist(); renderHome();
     toast('Копия загружена. Новых слов: ' + added);
@@ -582,6 +707,11 @@ $('listBack').addEventListener('click', () => show('home'));
 $('formBack').addEventListener('click', () => show('list'));
 
 renderHome();
+// Remove photos no card points to any more (deleted cards, replaced photos).
+setTimeout(() => {
+  const used = new Set(stacks.flatMap(s => s.cards.map(c => c.img).filter(Boolean)));
+  pics.keys().then(ks => ks.forEach(k => { if (!used.has(k)) pics.del(k) })).catch(() => {});
+}, 3000);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
