@@ -137,6 +137,16 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
 .photo-btns svg{width:20px;height:20px}
 #photoRemove{color:var(--danger)}
 
+/* Bulk add */
+#bulkBody{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding-bottom:24px}
+.bulk-help{margin:0;font-size:15px;color:var(--muted);line-height:1.5}
+.bulk-help code{font-family:ui-monospace,Menlo,monospace;font-size:14px;color:var(--ink);background:var(--soft);padding:2px 6px;border-radius:6px;overflow-wrap:anywhere}
+.bulk-field textarea{min-height:220px;font-size:16px;line-height:1.5}
+#bulkReport{font-size:15px;line-height:1.5;color:var(--muted)}
+#bulkReport b{color:var(--ink)}
+#bulkReport .warn{color:var(--danger)}
+#bulkBody .primary{flex:none}
+
 /* Card photo: shown on the side that carries the English word */
 .pic{display:block;width:100%;max-width:300px;aspect-ratio:16/10;max-height:38%;object-fit:cover;border-radius:14px;flex:none;background:var(--soft)}
 .row .thumb{width:52px;height:40px;flex:none;border-radius:8px;object-fit:cover;background:var(--soft)}
@@ -200,6 +210,21 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
   </div>
   <input id="search" type="search" placeholder="Поиск" aria-label="Поиск по стопке" autocomplete="off" autocapitalize="none">
   <ul id="rows"></ul>
+</section>
+
+<section class="view" id="bulk" hidden>
+  <div class="bar">
+    <button type="button" class="round" id="bulkBack" aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <h2 id="bulkTitle">Добавить списком</h2>
+  </div>
+  <div id="bulkBody">
+    <p class="bulk-help">Одна строка — одна карточка. Части разделяй точкой с запятой:<br>
+      <code>слово; перевод; пример; транскрипция</code><br>
+      Пример и транскрипцию можно пропустить. Подойдёт и таблица, скопированная из Excel или Google Таблиц.</p>
+    <label class="field bulk-field"><span>Карточки</span><textarea id="bulkText" lang="en" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="furious; в ярости; I get furious when people are rude.; /ˈfjʊriəs/&#10;sewage; сточные воды&#10;delighted; очень довольный; I would be delighted to join your team."></textarea></label>
+    <div id="bulkReport" role="status"></div>
+    <button type="button" class="primary" id="bulkSave" disabled>Добавить</button>
+  </div>
 </section>
 
 <section class="view" id="edit" hidden>
@@ -327,7 +352,7 @@ function el(tag, cls, text){ const n = document.createElement(tag); if (cls) n.c
 const ICON_PLUS = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
 
 /* ---------- navigation ---------- */
-const views = ['home','study','list','edit'];
+const views = ['home','study','list','edit','bulk'];
 function show(v){
   views.forEach(n => $(n).hidden = n !== v);
   if (v === 'home') renderHome();
@@ -520,6 +545,7 @@ function removeCard(id){
 $('stackMenu').addEventListener('click', () => {
   const s = cur();
   openSheet({ title:s.name, actions:[
+    { label:'Добавить списком', cls:'main', fn:openBulk },
     { label:'Переименовать', fn:() => askName('Название стопки', s.name, name => { s.name = name; persist(); renderList() }) },
     { label:'Удалить стопку', cls:'danger', fn:() => openSheet({
         title:'Удалить стопку «' + s.name + '»?',
@@ -529,6 +555,51 @@ $('stackMenu').addEventListener('click', () => {
       }) }
   ]});
 });
+
+/* ---------- bulk add ---------- */
+const isTr = f => /^[\/\[].*[\/\]]$/.test(f);
+function parseBulk(text, existing){
+  const have = new Set(existing.map(c => c.en.trim().toLowerCase()));
+  const cards = [], bad = [], dup = [];
+  text.split(/\r?\n/).forEach((raw, n) => {
+    const line = raw.trim().replace(/^(\d+[.)]|[-•*–])\s+/, '');
+    if (!line) return;
+    const sep = line.includes('\t') ? '\t' : line.includes(';') ? ';' : line.includes('|') ? '|' : null;
+    let parts = (sep ? line.split(sep) : [line]).map(p => p.trim().replace(/^["«]|["»]$/g, '').trim());
+    let tr = parts.find(isTr) || '';
+    parts = parts.filter(p => p !== tr);
+    const [en = '', ru = '', ex = '', extra = ''] = parts;
+    if (!tr && extra) tr = extra;
+    if (!en || !ru) { bad.push(n + 1); return }
+    const key = en.toLowerCase();
+    if (have.has(key)) { dup.push(en); return }
+    have.add(key);
+    cards.push({ en, ru, ex, tr });
+  });
+  return { cards, bad, dup };
+}
+function bulkReport(){
+  const { cards, bad, dup } = parseBulk($('bulkText').value, cur().cards);
+  const r = $('bulkReport'); r.replaceChildren();
+  if (cards.length) { r.append('Будет добавлено: '); r.append(el('b','', cards.length + ' ' + plural(cards.length))) }
+  if (dup.length) r.append(el('div','', 'Уже есть в стопке, пропущу: ' + dup.slice(0,5).join(', ') + (dup.length > 5 ? ' и ещё ' + (dup.length - 5) : '')));
+  if (bad.length) r.append(el('div','warn', 'Нет перевода в строках: ' + bad.slice(0,8).join(', ') + (bad.length > 8 ? '…' : '') + '. Эти строки пропущу.'));
+  $('bulkSave').disabled = !cards.length;
+  $('bulkSave').textContent = cards.length ? 'Добавить ' + cards.length + ' ' + plural(cards.length) : 'Добавить';
+  return cards;
+}
+function openBulk(){
+  $('bulkText').value = ''; show('bulk'); bulkReport(); $('bulkText').focus();
+}
+$('bulkText').addEventListener('input', bulkReport);
+$('bulkSave').addEventListener('click', () => {
+  const cards = bulkReport(); if (!cards.length) return;
+  const now = Date.now();
+  cards.forEach((c, i) => cur().cards.push({ ...c, id:newId('c') + i, createdAt:now + i }));
+  persist(); show('list');
+  toast('Добавлено: ' + cards.length + ' ' + plural(cards.length));
+});
+$('bulkBack').addEventListener('click', () => show('list'));
 
 /* ---------- form ---------- */
 let editId = null;
